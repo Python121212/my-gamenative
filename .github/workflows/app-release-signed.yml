@@ -57,6 +57,8 @@ jobs:
         case "$FLAVOR" in Legacy|Modern|LegacyXr) ;; *) exit 1 ;; esac
         case "$BUILD_TYPE" in Debug|Release) ;; *) exit 1 ;; esac
         export POSTHOG_HOST="${POSTHOG_HOST:-https://us.i.posthog.com}"
+        # The secrets Gradle plugin requires this file even when values come from env.
+        touch local.properties
         set +e
         ./gradlew --max-workers=2 -Dorg.gradle.jvmargs=-Xmx3g -Pkotlin.daemon.jvmargs=-Xmx2g ":app:bundle${FLAVOR}${BUILD_TYPE}" 2>&1 | tee gradle-build.log
         status=${PIPESTATUS[0]}
