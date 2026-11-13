@@ -115,25 +115,46 @@ jobs:
       actions: read
       contents: write
     steps:
-    - name: Download and publish APK
+    - name: Validate source run
+      id: source
       env:
         GH_TOKEN: ${{ github.token }}
         GH_REPO: ${{ github.repository }}
         RUN_ID: ${{ inputs.source_run_id }}
       run: |
-        [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo "Invalid source run ID"; exit 1; }
-        run=$(gh api "repos/$GH_REPO/actions/runs/$RUN_ID")
-        [[ "$(jq -r .conclusion <<< "$run")" == success ]] || { echo "Source run did not succeed"; exit 1; }
-        [[ "$(jq -r .path <<< "$run")" == ".github/workflows/app-release-signed.yml" ]] || { echo "Unexpected source workflow"; exit 1; }
-        commit=$(jq -r .head_sha <<< "$run")
-        gh run download "$RUN_ID" --name GameNative-Legacy-Debug --dir release-apk
-        apk=release-apk/GameNative-legacy-debug.apk
-        test -s "$apk"
+        [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo "::error::Invalid source run ID"; exit 1; }
+        if ! gh api "repos/$GH_REPO/actions/runs/$RUN_ID" > run.json 2> error.log; then
+          echo "::error::Failed to query source run: $(cat error.log)"; exit 1
+        fi
+        [[ "$(jq -r .conclusion run.json)" == success ]] || { echo "::error::Source run did not succeed"; exit 1; }
+        [[ "$(jq -r .path run.json)" == ".github/workflows/app-release-signed.yml" ]] || { echo "::error::Unexpected source workflow"; exit 1; }
+        echo "commit=$(jq -r .head_sha run.json)" >> "$GITHUB_OUTPUT"
+    - name: Download built APK
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        RUN_ID: ${{ inputs.source_run_id }}
+      run: |
+        if ! gh run download "$RUN_ID" --name GameNative-Legacy-Debug --dir release-apk 2> error.log; then
+          echo "::error::Artifact download failed: $(cat error.log)"; exit 1
+        fi
+        test -s release-apk/GameNative-legacy-debug.apk || { echo "::error::APK not found"; exit 1; }
+    - name: Publish release
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        RUN_ID: ${{ inputs.source_run_id }}
+        COMMIT: ${{ steps.source.outputs.commit }}
+      run: |
         tag="legacy-debug-$RUN_ID"
-        gh release create "$tag" "$apk" --target "$commit" --draft --prerelease \
+        if ! gh release create "$tag" release-apk/GameNative-legacy-debug.apk --target "$COMMIT" --draft --prerelease \
           --title "GameNative Legacy Debug ($RUN_ID)" \
-          --notes "Legacy Debug universal APK from Actions run $RUN_ID. This is a debug-signed build, not an official production-signed release; it may not update an official installation."
-        gh release edit "$tag" --draft=false
+          --notes "Legacy Debug universal APK from Actions run $RUN_ID. This is a debug-signed build, not an official production-signed release; it may not update an official installation." 2> error.log; then
+          echo "::error::Release creation failed: $(cat error.log)"; exit 1
+        fi
+        if ! gh release edit "$tag" --draft=false 2> error.log; then
+          echo "::error::Release publication failed: $(cat error.log)"; exit 1
+        fi
 
   build:
     if: github.event_name == 'push'
