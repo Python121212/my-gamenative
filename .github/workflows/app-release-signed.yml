@@ -45,6 +45,8 @@ jobs:
       uses: gradle/actions/wrapper-validation@v4
     - name: Set up Gradle cache
       uses: gradle/actions/setup-gradle@v4
+      with:
+        cache-read-only: false
     - name: Build selected bundle
       env:
         FLAVOR: ${{ inputs.flavor }}
@@ -60,7 +62,7 @@ jobs:
         # The secrets Gradle plugin requires this file even when values come from env.
         touch local.properties
         set +e
-        ./gradlew --max-workers=2 -Dorg.gradle.jvmargs=-Xmx3g -Pkotlin.daemon.jvmargs=-Xmx2g ":app:bundle${FLAVOR}${BUILD_TYPE}" 2>&1 | tee gradle-build.log
+        ./gradlew --max-workers=2 -Dorg.gradle.jvmargs=-Xmx4g -Pkotlin.daemon.jvmargs=-Xmx5g ":app:bundle${FLAVOR}${BUILD_TYPE}" 2>&1 | tee gradle-build.log
         status=${PIPESTATUS[0]}
         set -e
         if [ "$status" -ne 0 ]; then
