@@ -11,6 +11,15 @@ on:
       - '.github/ISSUE_TEMPLATE/**'
   workflow_dispatch:
     inputs:
+      operation:
+        description: "Build an APK or publish a previously built Legacy Debug APK"
+        type: choice
+        options: [build, publish]
+        default: build
+      source_run_id:
+        description: "Successful Actions run ID to publish (publish only)"
+        required: false
+        type: string
       flavor:
         description: "APK variant (Legacy is recommended for most devices)"
         type: choice
@@ -29,7 +38,7 @@ concurrency:
 jobs:
   # Build just the requested variant. The existing push/release job remains unchanged.
   fast-apk:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'build'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
@@ -97,6 +106,34 @@ jobs:
         if-no-files-found: error
         compression-level: 0
         retention-days: 7
+
+  publish-debug-apk:
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'publish'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: write
+    steps:
+    - name: Download and publish APK
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        RUN_ID: ${{ inputs.source_run_id }}
+      run: |
+        [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo "Invalid source run ID"; exit 1; }
+        run=$(gh api "repos/$GH_REPO/actions/runs/$RUN_ID")
+        [[ "$(jq -r .conclusion <<< "$run")" == success ]] || { echo "Source run did not succeed"; exit 1; }
+        [[ "$(jq -r .path <<< "$run")" == ".github/workflows/app-release-signed.yml" ]] || { echo "Unexpected source workflow"; exit 1; }
+        commit=$(jq -r .head_sha <<< "$run")
+        gh run download "$RUN_ID" --name GameNative-Legacy-Debug --dir release-apk
+        apk=release-apk/GameNative-legacy-debug.apk
+        test -s "$apk"
+        tag="legacy-debug-$RUN_ID"
+        gh release create "$tag" "$apk" --target "$commit" --draft --prerelease \
+          --title "GameNative Legacy Debug ($RUN_ID)" \
+          --notes "Legacy Debug universal APK from Actions run $RUN_ID. This is a debug-signed build, not an official production-signed release; it may not update an official installation."
+        gh release edit "$tag" --draft=false
 
   build:
     if: github.event_name == 'push'
