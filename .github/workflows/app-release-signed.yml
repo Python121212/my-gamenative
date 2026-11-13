@@ -57,7 +57,18 @@ jobs:
         case "$FLAVOR" in Legacy|Modern|LegacyXr) ;; *) exit 1 ;; esac
         case "$BUILD_TYPE" in Debug|Release) ;; *) exit 1 ;; esac
         export POSTHOG_HOST="${POSTHOG_HOST:-https://us.i.posthog.com}"
-        ./gradlew -Pkotlin.daemon.jvmargs=-Xmx4g ":app:bundle${FLAVOR}${BUILD_TYPE}"
+        set +e
+        ./gradlew -Pkotlin.daemon.jvmargs=-Xmx4g ":app:bundle${FLAVOR}${BUILD_TYPE}" 2>&1 | tee gradle-build.log
+        status=${PIPESTATUS[0]}
+        set -e
+        if [ "$status" -ne 0 ]; then
+          # Expose a concise failure summary in GitHub's job annotations as well as the log.
+          tail -n 35 gradle-build.log | while IFS= read -r line; do
+            line="${line//'%'/'%25'}"
+            echo "::error::$line"
+          done
+          exit "$status"
+        fi
     - name: Create universal APK
       env:
         FLAVOR: ${{ inputs.flavor }}
