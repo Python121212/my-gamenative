@@ -123,6 +123,8 @@ jobs:
         RUN_ID: ${{ inputs.source_run_id }}
       run: |
         [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo "::error::Invalid source run ID"; exit 1; }
+        permissions=$(gh api "repos/$GH_REPO" --jq '.permissions | tojson')
+        echo "::notice::Workflow token repository permissions: $permissions"
         if ! gh api "repos/$GH_REPO/actions/runs/$RUN_ID" > run.json 2> error.log; then
           echo "::error::Failed to query source run: $(cat error.log)"; exit 1
         fi
