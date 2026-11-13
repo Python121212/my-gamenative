@@ -30,7 +30,7 @@ jobs:
   # Build just the requested variant. The existing push/release job remains unchanged.
   fast-apk:
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read
@@ -58,10 +58,12 @@ jobs:
         case "$BUILD_TYPE" in Debug|Release) ;; *) exit 1 ;; esac
         export POSTHOG_HOST="${POSTHOG_HOST:-https://us.i.posthog.com}"
         set +e
-        ./gradlew -Pkotlin.daemon.jvmargs=-Xmx4g ":app:bundle${FLAVOR}${BUILD_TYPE}" 2>&1 | tee gradle-build.log
+        ./gradlew --max-workers=2 -Dorg.gradle.jvmargs=-Xmx3g -Pkotlin.daemon.jvmargs=-Xmx2g ":app:bundle${FLAVOR}${BUILD_TYPE}" 2>&1 | tee gradle-build.log
         status=${PIPESTATUS[0]}
         set -e
         if [ "$status" -ne 0 ]; then
+          echo "::error::Gradle exited with status $status"
+          free -m
           # Expose a concise failure summary in GitHub's job annotations as well as the log.
           tail -n 35 gradle-build.log | while IFS= read -r line; do
             line="${line//'%'/'%25'}"
