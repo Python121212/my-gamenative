@@ -65,10 +65,11 @@ jobs:
           echo "::error::Gradle exited with status $status"
           free -m
           # Expose a concise failure summary in GitHub's job annotations as well as the log.
-          tail -n 35 gradle-build.log | while IFS= read -r line; do
-            line="${line//'%'/'%25'}"
-            echo "::error::$line"
-          done
+          summary=$(tail -n 50 gradle-build.log)
+          summary="${summary//'%'/'%25'}"
+          summary="${summary//$'\n'/'%0A'}"
+          summary="${summary//$'\r'/'%0D'}"
+          echo "::error::$summary"
           exit "$status"
         fi
     - name: Create universal APK
