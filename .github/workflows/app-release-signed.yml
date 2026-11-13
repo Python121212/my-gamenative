@@ -147,10 +147,15 @@ jobs:
         COMMIT: ${{ steps.source.outputs.commit }}
       run: |
         tag="legacy-debug-$RUN_ID"
-        if ! gh release create "$tag" release-apk/GameNative-legacy-debug.apk --target "$COMMIT" --draft --prerelease \
+        if gh release view "$tag" --json isDraft --jq .isDraft > draft-status 2> /dev/null; then
+          [[ "$(cat draft-status)" == true ]] || { echo "::error::Release already published"; exit 1; }
+        elif ! gh release create "$tag" --target "$COMMIT" --draft --prerelease \
           --title "GameNative Legacy Debug ($RUN_ID)" \
           --notes "Legacy Debug universal APK from Actions run $RUN_ID. This is a debug-signed build, not an official production-signed release; it may not update an official installation." 2> error.log; then
           echo "::error::Release creation failed: $(cat error.log)"; exit 1
+        fi
+        if ! gh release upload "$tag" release-apk/GameNative-legacy-debug.apk --clobber 2> error.log; then
+          echo "::error::APK upload failed: $(cat error.log)"; exit 1
         fi
         if ! gh release edit "$tag" --draft=false 2> error.log; then
           echo "::error::Release publication failed: $(cat error.log)"; exit 1
